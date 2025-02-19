@@ -1,0 +1,506 @@
+---
+title: "GO Pathway + UCell"
+author: "D. Ford Hannum"
+date: "`r Sys.Date()`"
+output: 
+        html_document: 
+          toc: yes
+          toc_float: yes
+          theme: united
+          highlight: tango
+          number_sections: true
+          keep_md: no
+          toc_depth: 5
+---
+
+```{r setup, include=T}
+knitr::opts_chunk$set(echo = TRUE, message = FALSE)
+
+# Set the directory to where everything is located
+knitr::opts_knit$set(root.dir = '/Users/dfhannum/Desktop/OphthalmApp/') # sets it for all code chunks
+
+library(Seurat) # for scRNA functions and plots
+library(ggplot2) # for custom plotting
+library(data.table) # data file processing and tstrsplit
+library(clusterProfiler) # pathway analysis
+
+library(org.Mm.eg.db) # <org.Hs.eg.db> human or <org.Rn.eg.db> rat
+
+library(UpSetR) # to generate upset plots to compared GO results
+```
+
+# Introduction
+
+In this document we are going to use an already created Seurat scRNA object. We are then going to identify cluster markers, and submit those cluster markers for gene ontology over-representation (enrichment) analysis. From there we will look at how setting a background list of genes for pathway affects the outcome. After identifying pathways of interest we will pull ifnormation about all the genes associated with that pathway to generate module scores with UCell. 
+
+Goals:
+* test pathway results for differences when supplying a background list of genes
+* generate module scores for pathways that show up as significant
+
+# Data
+
+I'm using a previously published dataset that I've reanalyzed for other example scripts.
+
+```{r}
+# Loading in the data
+obj <- readRDS('./data/seurat_obj_full.Rds') 
+```
+
+```{r}
+# Visualizing the data
+DimPlot(obj)
+```
+
+We are going to rerun the clustering to identify a smaller number of clusters. Many of these clusters will share similar transcriptomic profiles. For the speed/visualizations of my downstream example it'll be easier working with fewer clusters.
+
+```{r}
+obj <- FindClusters(obj, resolution = .05)
+```
+
+```{r}
+# Projecting the data in umap space
+DimPlot(obj)
+```
+
+# Finding Cluster Marker Genes
+
+
+```{r}
+# Useful function to find markers for each cluster compared to all others
+markers <- FindAllMarkers(object = obj,
+                          only.pos = T, # focusing on upregulated markers
+                          test.use = 'wilcox', # the default test that runs quickly
+                          logfc.threshold = .2 # setting a strong cutoff 
+                          )
+```
+
+Next we are going to extract the differentially expressed genes for each cluster
+
+```{r}
+# Creating an empty list to add to
+marker_list <- list()
+
+# A for loop to loop through the clusters
+# You can replace obj$seurat_clusters with your cluster identity
+for (i in levels(obj$seurat_clusters)){
+  
+  # Print statements are always useful in for loops to track progress and to 
+  # make sure it's doing what it's suppose to
+  print(paste0("Cluster ", i))
+  
+  # Isolating markers for the given cluster
+  temp <- markers[markers$cluster == i,]
+  
+  # Only keeping significant markers
+  temp <- temp[temp$p_val_adj < .05,]
+  
+  # Printing a statement saying how many markers we have
+  print(paste0("Contains ", dim(temp)[1], ' markers'))
+  
+  # Adding the markers/gene to the list indexed by cluster
+  marker_list[[i]] <- temp$gene
+}
+```
+
+# Pathway Analysis
+
+We are going to use the package clusterProfiler to run GO enrichment. We will run it twice once with a background list and once without to compare the results.
+
+```{r}
+# Generating a background list of genes in our dataset 
+background_genes <- rownames(obj)
+
+# Printing the number of genes in the dataset
+length(background_genes)
+```
+
+
+```{r}
+# Setting the organism we are testing
+org <- 'org.Mm.eg.db'
+```
+
+```{r}
+# Checking how long this code chunk takes by setting a start time
+start_time <- Sys.time()
+
+# Initializing an empty list
+go_results <- list()
+
+# Looping through the clusters
+for (i in names(marker_list)){
+  # print(i) # after testing I often comment out the print statement
+  
+  # Getting the marker set
+  marker_set <- marker_list[[i]]
+  
+  # Running GO enrichment
+  go <- enrichGO(gene = marker_set, # the genes we're testing
+                 ont = 'ALL', # looking at ALL = BP, CC, and MF
+                 keyType = 'SYMBOL', # we're using gene symbol 
+                 universe = background_genes, # setting the background list
+                 minGSSize = 10, # restricting to pathways with > 10 genes
+                 maxGSSize = 800, # restircting to pathways with < 800 genes
+                 pvalueCutoff = 1, # not setting a cutoff here 
+                 OrgDb = org, # setting the organism
+                 pAdjustMethod = 'BH') # using Benjamini-Hochberg for pval adj.
+  
+  # Assigning results to the list
+  go_results[[i]] <- go
+}
+
+# Checking how long it took to run
+Sys.time() - start_time
+```
+
+On my laptop (Macbook Pro, 36 RAM) this took me just under 3 minutes. 
+
+```{r}
+# Checking what the results look like
+# I remove the final two columns because they're long
+head(as.data.frame(go_results[[1]])[,1:11])
+```
+
+```{r}
+# Setting timer
+start_time <- Sys.time()
+
+# Inititalizing results for test without background genes
+go_results_nobackground <- list()
+
+# Same as the previous code except with <universe = background_genes> commented
+# out
+for (i in names(marker_list)){
+  print(i)
+  marker_set <- marker_list[[i]]
+  
+  go <- enrichGO(gene = marker_set,
+                 ont = 'ALL',
+                 keyType = 'SYMBOL',
+                 # universe = background_genes,
+                 minGSSize = 10,
+                 maxGSSize = 800,
+                 pvalueCutoff = 1,
+                 OrgDb = org,
+                 pAdjustMethod = 'BH')
+  go_results_nobackground[[i]] <- go
+}
+
+# Printing how long it took
+Sys.time() - start_time
+```
+
+## Comparing results
+
+Here we are going to compare the pathway results whether we use or don't use the background list of genes.
+
+```{r}
+for (cluster in levels(obj$seurat_clusters)){
+  
+  # with background results
+  res1 <- as.data.frame(go_results[[cluster]])
+  
+  # without background results
+  res2 <- as.data.frame(go_results_nobackground[[cluster]])
+  
+  # Creating a list to plot the overlap of significant terms
+  list_ <- list()
+  list_[['withBackground']] <- rownames(res1[res1$p.adjust < .05,])
+  list_[['woBackground']] <- rownames(res2[res2$p.adjust < .05,])
+  
+  # printing the cluster since it's difficult to add a title to the plot
+  print(paste0("Cluster ",cluster))
+  
+  print(
+    # generating an upset plot
+   upset(fromList(list_),
+        order.by = 'freq') # how the output is ordered
+  )
+  
+  # break
+}
+```
+
+These upset plots show the overlap between lists (similar to a venn diagram). We consistently see that by not including the background list of genes we generate a higher number of differentiallly expressed pathways. The pathways we see with the background list generally are also included in the list without background. 
+
+By including the background we avoid bias that may appear from a lack of representation of certain GO terms within our dataset. This also deflates our p-values since we are not testing against the entire genome. By including the background list, we also ensure the results better represents the underlying biology being studied in the dataset.
+
+My recommendation would be to always use a background list of genes.
+
+# Top Pathways
+
+Next we are going to look at the top 10 (by p-value) significant biological process (BP) pathways associated with each cluster.
+
+```{r}
+# Initializing empty lists 
+top10_terms <- list()
+top10_associated_genes <- list()
+
+# Looping through clusters
+for (cluster in levels(obj$seurat_clusters)){
+  
+  # Pulling out results for the given cluster
+  temp <- as.data.frame(go_results[[cluster]])
+  
+  # Restricting to BP ontology
+  temp <- temp[temp$ONTOLOGY == 'BP',]
+  
+  # Ordering the dataframe by increasing p-value
+  temp <- temp[order(temp$pvalue, decreasing = F),]
+  
+  # Restricting to only positive terms
+  temp <- temp[temp$FoldEnrichment > 0,]
+  
+  # Restricting to top 10 terms to plot
+  temp <- temp[1:10,]
+  
+  # Shortening the description because sometimes they are incredibly long and 
+  # overrun the plot
+  temp$Description_short <- substr(temp$Description,1,50)
+  
+  # Setting the order of the description factor so they y-axis plots in order
+  # rather than plotting alphabetically. Use rev() because I want it to plot 
+  # the most significant term at the top rather than the bottom
+  temp$Description_short <- factor(temp$Description_short, 
+                                   levels = rev(unique(temp$Description_short)))
+  
+  # need to use print statements for it to be exported outside the for loop
+  print(
+    # Plotting using ggplot2
+    ggplot(temp, aes(x = -log10(p.adjust), # x-axis
+                     y = Description_short, # y-axis
+                     size = Count, # size of the points
+                     color = FoldEnrichment)) + # color of the points
+      geom_point() + # making it plot points
+      theme_bw() + # a simple theme which declutters the plot
+      ylab("GO Description") + # adding better y-axis label
+      ggtitle(paste0('Cluster ',cluster,' Top Terms')) + # adding title
+      # adding a monochromatic scale that goes from light to dark
+      scale_color_gradient(low = 'pink', high = 'red')
+  )
+  
+  # extracting the top ten GO id terms
+  top10_terms[[cluster]] <- temp$ID
+  
+  # extracting the DEGs that nominated this pathway
+  top10_associated_genes[[cluster]] <- temp$geneID
+  
+  
+}
+```
+
+# Extracting all genes associated with the pathway
+
+
+```{r}
+# Checking how many GO terms are in the top 10
+length(unique(unlist(top10_terms)))
+```
+
+The top 10 pathways for our 14 clusters, consist of only 72 unique pathways. This means that many are shared across clusters. This isn't surprising as many of the clusters are perhaps identifying the same cell types.
+
+
+```{r}
+# Extracting all genes in the pathways
+res <- bitr(unlist(top10_terms), # submitting all 72 go terms
+            fromType = 'GOALL', # telling we're submitting GO IDs
+            toType = 'SYMBOL', # getting back gene symbols
+            OrgDb = 'org.Mm.eg.db') # we're using mouse IDs
+
+# initializing list
+gene_lists <- list()
+
+# looping through unique GO IDs
+for (term in unique(res$GOALL)){
+  # print(term)
+  
+  # extracting unique genes
+  genes <- unique(res[res$GOALL == term,]$SYMBOL)
+  
+  # restricting to only genes in our dataset
+  genes <- genes[genes %in% rownames(obj)]
+  
+  # assigning genes to our list
+  gene_lists[[term]] <- genes
+}
+
+```
+
+# Generating UCell Module Scores for GO Terms
+
+```{r}
+# timing
+start_time <- Sys.time()
+# length(gene_lists)
+
+# Adding module scores for all the GO terms we're interested in
+# I provide it a unique name to better refer back to it later
+# This function automatically appends a number to the end so I added a _ to the
+# end of my name so I can ignore it later
+
+obj <- AddModuleScore(object = obj,
+                      features = gene_lists,
+                      name = paste0('UCell_',
+                                    names(gene_lists),
+                                    '_'))
+
+Sys.time() - start_time
+```
+
+We see we added columns to the metadata containing our UCell scores
+
+```{r}
+# Printing the column names in our metadata
+colnames(obj@meta.data)
+```
+
+## Plotting Module Scores
+
+```{r, out.width='50%', fig.show='hold'}
+
+# looping through clusters
+for (cluster in levels(obj$seurat_clusters)){
+  
+  # looping through the significant pathways in the given cluster
+  for (term in top10_terms[[cluster]]){
+    
+    # Pulling out the names from the metadata
+    # grepl matches the string I provide in the first argument to the columns
+    # in the metadadta
+    feature <- colnames(obj@meta.data)[grepl(paste0('^UCell_',
+                                                    term,
+                                                    '_'),
+                                             colnames(obj@meta.data))]
+    print(
+      # plotting a violin plot
+      VlnPlot(obj,
+              features = feature, # plotting the UCell score for the term
+              pt.size = 0) + # removing the points from the plot
+        # adding a title 
+        ggtitle(paste0('Cluster ', cluster,': ', term)) +
+        NoLegend() # removing the redundant legend
+    )
+  }
+}
+```
+
+
+```{r}
+# looping through the clusters
+for (cluster in levels(obj$seurat_clusters)){
+  # extracting features
+  features <- top10_terms[[cluster]]
+  
+  # making a large string to search for, "|" means or so it will search for
+  # all the terms
+  string_to_find <- paste0('^UCell_',features,'_',collapse = '|')
+  
+  # extracting all the features/terms for this cluster
+  features <- colnames(obj@meta.data)[grepl(string_to_find,
+                                            colnames(obj@meta.data))]
+  
+  print(
+    # plotting a dotplot
+    DotPlot(obj,
+            features = features, # providing features
+            # changing the colors because I think this distinguishes better
+            cols = c('white','blue')) +
+      coord_flip() + # flipping the x- and y-axis so we can read the terms
+      ggtitle(paste0("Cluster ", cluster))
+  )
+  
+}
+```
+
+# Generating UCell Module Scores for Significant Terms
+
+Instead of generating the scores for all the genes in the pathways we are going to generate the scores based on the DEGs that drove that pathway to be assigned to the given cluster.
+
+```{r}
+associated_genes <- list()
+for (cluster in levels(obj$seurat_clusters)){
+  # print(cluster)
+  
+  # looping through the earlier list
+  for (idx in 1:length(top10_associated_genes[[cluster]])){
+    # print(idx)
+    
+    # creating a unique name for the term since they are cluster specific here
+    name_ <- paste0('C',cluster,'_',top10_terms[[cluster]][idx])
+    
+    # the genes are separated by "/" so we will split them by that then unlist
+    # so we get a vector back
+    genes_ <- unlist(tstrsplit(top10_associated_genes[[cluster]][idx],'\\/'))
+    
+    associated_genes[[name_]] <- genes_
+  }
+}
+# associated_genes
+```
+
+```{r}
+start_time <- Sys.time()
+# length(gene_lists)
+obj <- AddModuleScore(object = obj,
+                      features = associated_genes,
+                      name = paste0('UCell_',
+                                    names(associated_genes),
+                                    '_'))
+
+Sys.time() - start_time
+```
+
+We see we added columns to the metadata containing our UCell scores
+
+```{r}
+colnames(obj@meta.data)
+```
+
+## Plotting Module Scores
+
+```{r, out.width='50%', fig.show='hold'}
+
+for (term in names(associated_genes)){
+  feature <- colnames(obj@meta.data)[grepl(paste0('^UCell_',
+                                                  term,
+                                                  '_'),
+                                           colnames(obj@meta.data))]
+  
+  # break
+  print(
+    
+    VlnPlot(obj, features = feature, pt.size = 0) +
+      ggtitle(term) +
+      NoLegend()
+  )
+  
+}
+```
+
+
+```{r}
+for (cluster in levels(obj$seurat_clusters)){
+  string_to_find <- paste0('^UCell_C',cluster,'_GO',collapse = '|')
+  features <- colnames(obj@meta.data)[grepl(string_to_find,
+                                            colnames(obj@meta.data))]
+  
+  print(
+    DotPlot(obj,
+            features = features,
+            cols = c('white','blue')) +
+      coord_flip() +
+      ggtitle(paste0("Cluster ", cluster))
+  )
+  
+}
+```
+
+The violin and dot plots are most aligned with the given clusters here.
+
+
+# End
+
+```{r}
+sessionInfo()
+```
+
