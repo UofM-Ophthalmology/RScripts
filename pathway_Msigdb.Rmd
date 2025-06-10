@@ -194,20 +194,25 @@ table(temp$collection,temp$p.adjust < .05)
 Next we'll view and plot the WikiPathways results, one of the collections in MSigDB.
 
 ```{r}
-wiki <- temp[temp$collection == 'WikiPathways',]
+wiki <- temp[temp$collection == 'WikiPathways',] # subsetting to just Wiki results
 
-wiki$id <- gsub('WP_','', wiki$ID)
-wiki$id <- factor(wiki$id, levels = rev(unique(wiki$id)))
-ggplot(wiki[1:10,],
-       aes(x = -log10(p.adjust),
+wiki$id <- gsub('WP_','', wiki$ID) # removing the WP_ preceder from term IDs
+wiki$id <- substr(wiki$id,1,30) # limiting to thirty characters for ID bc some get long
+wiki$id <- factor(wiki$id, levels = rev(unique(wiki$id))) # ordering them by p-vals
+
+ggplot(wiki[1:10,], # only plotting the first ten 
+       aes(x = -log10(p.adjust), 
            y = id,
            color = FoldEnrichment,
            size = Count)) +
-  theme_bw() +
+  theme_bw() + # my theme of choice
   geom_point() +
-  scale_color_gradient(low = 'pink', high = 'darkred') +
+  scale_color_gradient(low = 'pink', high = 'darkred') + # creating a monotonic color scheme
+  # creating a significance cutoff to let viewers know all values plotted are significant
   geom_vline(xintercept = -log10(0.05), colour = 'lightgrey', linetype = 2, linewidth = 1) +
+  # increasing the xlims because the larger points were getting cut off
   xlim(c(-log10(0.05),-log10(min(wiki$p.adjust)) + 1)) +
+  # cleaning up the labels on the graph
   labs(fill = 'Fold\nEnrichment', 
        size = 'Associated\nGenes') +
   xlab('-log10 FDR') +
