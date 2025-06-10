@@ -217,6 +217,6 @@ ggplot(wiki[1:10,], # only plotting the first ten
        size = 'Associated\nGenes') +
   xlab('-log10 FDR') +
   ylab("WikiPathway Terms") +
-  ggtitle("Top Ten WikiPathway Terms Associated with Cluster 1") 
+  ggtitle("Top Ten WikiPathway Terms Associated with C1") 
 ```
 
