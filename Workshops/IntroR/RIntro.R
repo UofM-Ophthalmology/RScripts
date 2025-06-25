@@ -4,11 +4,11 @@ setwd()
 library(ggplot2)
 
 # Here we will be introducing R and some it's basic functions
-# 
+#
 # When "#" appears in the code chunks everything after the "#" in that line is ignored. It's useful for commenting code.
-# 
+#
 # In the text "#" creates an outline in RStudio and a header in the output document.
-# 
+#
 # # Basics
 
 # Ctrl + Enter runs the lines of code your cursor is on.
@@ -51,7 +51,7 @@ class(num_index)
 paste0(char_[1],' = ', number_index[1])
 
 
-# Another data type which is used in plotting are factors. 
+# Another data type which is used in plotting are factors.
 
 fctr <- c('Tom','John','Karen')
 class(fctr)
@@ -98,11 +98,11 @@ for (i in 1:10){
 # Loop through 10 to 20, if the number is divisible by 6 print that number
 
 for(){
-  
+
   if(){
-    
+
   }
-  
+
 }
 
 # # Data Frames with Iris
@@ -159,7 +159,7 @@ ggplot(df) + # calling ggplot on the data frame
                  bins = 20) + # changing the number of bins
   theme_bw() + # lots of themes to choose from (ex. theme_classic())
   xlab('Sepal Length') + # cleaning up x-axis label
-  ylab('Count') + # changing y-axis label 
+  ylab('Count') + # changing y-axis label
   ggtitle('Histogram of Sepal Length') # Adding title
 
 
@@ -167,8 +167,8 @@ ggplot(df) + # calling ggplot on the data frame
 
 ## Density
 
-ggplot(df, aes(x = Sepal.Length)) + # aes can be added to main ggplot call 
-  # to apply to all downstream ggplot calls 
+ggplot(df, aes(x = Sepal.Length)) + # aes can be added to main ggplot call
+  # to apply to all downstream ggplot calls
   geom_density() + # creating a density curve
   theme_bw()
 
@@ -182,13 +182,13 @@ ggplot(df, aes(x = Sepal.Length,
 ## Scatter/Point
 
 ggplot(df, aes(x = Sepal.Length,
-               y = Sepal.Width, 
+               y = Sepal.Width,
                color = Species)) +
   geom_point() + # adding a point plot
   theme_bw()
 
 ggplot(df, aes(x = Sepal.Length,
-               y = Sepal.Width, 
+               y = Sepal.Width,
                color = Species)) +
   geom_point() + # adding a point plot
   theme_bw() +
@@ -197,14 +197,14 @@ ggplot(df, aes(x = Sepal.Length,
 colnames(df)
 
 ggplot(df, aes(x = Sepal.Length,
-               y = Sepal.Width, 
+               y = Sepal.Width,
                shape = Species,
                color = Petal.Length)) +
   geom_point(size = 2) + # adding a point plot
   theme_bw()
 
 ggplot(df, aes(x = Sepal.Length,
-               y = Sepal.Width, 
+               y = Sepal.Width,
                shape = Species,
                color = Petal.Length)) +
   geom_point(size = 2) + # adding a point plot
@@ -212,8 +212,6 @@ ggplot(df, aes(x = Sepal.Length,
   scale_color_gradient(low = 'pink', high = 'darkred')
 
 # Plot as scatter plot with petal length (x-axis) by petal width (y-axis) and color by Species. Manually choose colors for the Species.
-
-# Plot petal 
 
 ggplot()
 
@@ -264,11 +262,11 @@ species_df <- list()
 
 for (i in levels(df$Species)){
   temp <- df[df$Species == i,]
-  
+
   print(i)
-  
+
   print(cor.test(temp$Sepal.Length, temp$Sepal.Width))
-  
+
   species_df[[i]] <- temp
 }
 
@@ -279,16 +277,16 @@ species_df
 pvals <- c()
 for (i in names(species_df)){
   print(i)
-  
+
   temp <- species_df[[i]]
-  
+
   lm_ <- lm(data = temp, Sepal.Width ~ Sepal.Length)
-  
+
   names(summary(lm_))
   summary(lm_)$coefficients
   print(summary(lm_)$coefficients)
   pvalue <- summary(lm_)$coefficients[1,4]
-  
+
   pvals <- c(pvals, pvalue)
 }
 
@@ -314,20 +312,20 @@ combos
 pvals <- c()
 for (i in 1:dim(combos)[2]){
   print(i)
-  
+
   species1 <- combos[1,i]
   species2 <- combos[2,i]
-  
+
   print(paste0('Comparing ', species1,' vs ',
                species2))
-  
+
   test_ <- t.test(df[df$Species == species1,]$Petal.Length,
                   df[df$Species == species2,]$Petal.Length)
-  
+
   print(paste0('P-value = ',test_$p.value))
-  
+
   diff <- test_$estimate[2] - test_$estimate[1]
-  
+
   print(paste0('With an average difference of ', round(diff,2)))
 }
 
@@ -349,7 +347,7 @@ Basic clustering with k-means clustering.
 
 # Heatmaps
 
-# For the heatmap 
+# For the heatmap
 # What is the below code doing?
 df$sample <- 1:dim(df)[1]
 
@@ -403,4 +401,3 @@ ggplot(temp) +
   xlab('Samples') + ylab('Metadata') +
   labs(fill = 'Scaled\nValue') +
   theme(axis.text.x = element_blank())
-
