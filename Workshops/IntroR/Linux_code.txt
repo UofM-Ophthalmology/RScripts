@@ -1,0 +1,19 @@
+pwd
+
+mkdir bionf_workshop_RIntro
+
+cd /nfs/turbo/umms-wernebur1Non/Computational_Workshop/
+
+ll
+
+cd Day1_RIntro/
+
+ll
+
+cp ./RIntro.R ~
+
+module load RStudio
+
+module load Rtidyverse
+
+rstudio 
